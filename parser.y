@@ -19,7 +19,6 @@ extern int col_num;
 
 ProgramAST* g_ast = nullptr;
 
-// Helper functions
 static std::unique_ptr<Instruction> make_instruction(
     const std::string& opcode, const std::string& op1, const std::string& op2,
     bool hasComma, bool isLabelImm, bool isImm, int line, int col) {

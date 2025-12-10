@@ -44,14 +44,13 @@ struct InstructionDef {
 };
 
 // ============================================================================
-// INSTRUCTION TABLE - Add new instructions here!
+// INSTRUCTION TABLE - Add new instructions 
 // ============================================================================
 // Format: {mnemonic, format, opcodeReg, opcodeImm, immBits, extraData, size, canExpand, description}
 //
 // To add a new instruction:
 // 1. Determine the format (REG_REG, REG_IMM, etc.)
 // 2. Add a single line to this table
-// 3. That's it! No other files need modification for standard instruction formats.
 // ============================================================================
 
 inline const std::vector<InstructionDef>& getInstructionTable() {
@@ -94,7 +93,6 @@ inline const std::vector<InstructionDef>& getInstructionTable() {
     return INSTRUCTIONS;
 }
 
-// Build lookup map from mnemonic to instruction definition
 inline const std::unordered_map<std::string, const InstructionDef*>& getInstructionMap() {
     static std::unordered_map<std::string, const InstructionDef*> map;
     static bool initialized = false;
@@ -108,21 +106,17 @@ inline const std::unordered_map<std::string, const InstructionDef*>& getInstruct
     return map;
 }
 
-// Check if a string is a valid instruction mnemonic
 inline bool isValidInstruction(const std::string& mnemonic) {
     return getInstructionMap().count(mnemonic) > 0;
 }
 
-// Get instruction definition by mnemonic (returns nullptr if not found)
 inline const InstructionDef* getInstructionDef(const std::string& mnemonic) {
     auto& map = getInstructionMap();
     auto it = map.find(mnemonic);
     return (it != map.end()) ? it->second : nullptr;
 }
 
-// ============================================================================
 // Register definitions
-// ============================================================================
 struct RegisterDef {
     std::string name;
     uint8_t number;
@@ -166,9 +160,7 @@ inline bool isValidRegister(const std::string& reg) {
     return getRegisterMap().count(reg) > 0;
 }
 
-// ============================================================================
 // Directive definitions
-// ============================================================================
 struct DirectiveDef {
     std::string name;
     std::string description;
@@ -202,9 +194,7 @@ inline bool isValidDirective(const std::string& dir) {
     return getDirectiveMap().count(dir) > 0;
 }
 
-// ============================================================================
 // Format string helpers for error messages and documentation
-// ============================================================================
 inline std::string getFormatString(InstrFormat format) {
     switch (format) {
         case InstrFormat::REG_REG:        return "rX, rY";
@@ -224,9 +214,7 @@ inline std::string getFormatHint(const InstructionDef* def) {
     return "Expected format: " + def->mnemonic + " " + getFormatString(def->format);
 }
 
-// ============================================================================
 // Documentation generator
-// ============================================================================
 inline std::string generateInstructionSetDoc() {
     std::ostringstream doc;
     doc << "# qCore Instruction Set Reference\n\n";

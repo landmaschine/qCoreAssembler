@@ -87,7 +87,6 @@ int main(int argc, const char* argv[]) {
     int memoryDepth = 256;
     
     // Parse the memory depth from DEPTH directive if present
-    // We'll check this in a preprocessing pass
     std::ifstream file(inputFile);
     if (file.is_open()) {
         std::string line;

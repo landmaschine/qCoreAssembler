@@ -63,10 +63,7 @@ int64_t Encoder::parseImmediateOrSymbol(const std::string& value, const std::str
     }
 }
 
-// ============================================================================
 // Generic encoding functions - one per instruction format
-// ============================================================================
-
 void Encoder::encodeRegReg(const InstructionDef* def, uint8_t rX, uint8_t rY) {
     machineCode.push_back(def->opcodeReg | (rX << 9) | rY);
     currentAddress++;
@@ -195,10 +192,7 @@ void Encoder::encodeLabelLoad(Instruction* instr, uint8_t rX) {
     currentAddress += 2;
 }
 
-// ============================================================================
 // Main encoding dispatcher - routes to appropriate format handler
-// ============================================================================
-
 void Encoder::encodeInstruction(Instruction* instr) {
     try {
         const InstructionDef* def = getInstructionDef(instr->opcode);
@@ -287,9 +281,6 @@ std::vector<uint16_t> Encoder::encode(const std::vector<std::unique_ptr<Statemen
     
     for (const auto& stmt : ast) {
         switch (stmt->type) {
-            case StatementType::LABEL:
-                // Labels are already added in the first pass, skip here
-                break;
             case StatementType::DIRECTIVE:
                 encodeDirective(static_cast<Directive*>(stmt.get()));
                 break;

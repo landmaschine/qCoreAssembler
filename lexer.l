@@ -70,17 +70,14 @@ IDENT       [a-zA-Z_][a-zA-Z0-9_]*
 {IDENT}                     { 
                                 update_location();
                                 // Priority order: instruction > register > label reference
-                                // Check if it's a valid instruction from the table
                                 if (isValidInstruction(yytext)) {
                                     yylval.str = strdup(yytext);
                                     return INSTRUCTION;
                                 }
-                                // Check if it's a valid register from the table
                                 if (isValidRegister(yytext)) {
                                     yylval.str = strdup(yytext);
                                     return REGISTER;
                                 }
-                                // Otherwise it's a label reference
                                 yylval.str = strdup(yytext);
                                 return LABEL_REF;
                             }

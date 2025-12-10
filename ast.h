@@ -63,7 +63,6 @@ public:
         : Statement(StatementType::LABEL, l, c), name(n) {}
 };
 
-// AST Node for programs (vector of statements)
 using ProgramAST = std::vector<std::unique_ptr<Statement>>;
 
 extern ProgramAST* g_ast;
