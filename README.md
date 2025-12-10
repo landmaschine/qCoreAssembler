@@ -55,6 +55,7 @@ The compiled executable will be in the `bin/` directory.
 Options:
   -o <file>, --output <file>   Specify output MIF file (default: a.mif)
   -v, --verbose                Enable verbose output
+  --doc                        Display built-in documentation
   -h, --help                   Display help message
 ```
 
