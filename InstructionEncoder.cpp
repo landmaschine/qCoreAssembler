@@ -6,6 +6,8 @@
 // ============================================================================
 
 #include "InstructionEncoder.h"
+#include "InstructionDef.h"
+#include <stdatomic.h>
 
 uint8_t Encoder::parseRegister(const std::string& reg) {
     auto& regMap = getRegisterMap();
@@ -192,12 +194,22 @@ void Encoder::encodeLabelLoad(Instruction* instr, uint8_t rX) {
     currentAddress += 2;
 }
 
+void Encoder::encodeNoOperand(const InstructionDef* def) {
+    machineCode.push_back(def->opcodeReg);
+    currentAddress++;
+}
+
 // Main encoding dispatcher - routes to appropriate format handler
 void Encoder::encodeInstruction(Instruction* instr) {
     try {
         const InstructionDef* def = getInstructionDef(instr->opcode);
         if (!def) {
             throw std::runtime_error("Unknown instruction: " + instr->opcode);
+        }
+
+        if(def->format == InstrFormat::NO_OPERAND) {
+            encodeNoOperand(def);
+            return;
         }
         
         uint8_t rX = 0;
@@ -281,14 +293,43 @@ std::vector<uint16_t> Encoder::encode(const std::vector<std::unique_ptr<Statemen
     
     for (const auto& stmt : ast) {
         switch (stmt->type) {
-            case StatementType::DIRECTIVE:
-                encodeDirective(static_cast<Directive*>(stmt.get()));
+            case StatementType::DIRECTIVE: {
+                auto dir = static_cast<Directive*>(stmt.get());
+                if (dir->name == ".org") {
+                    // .org directive - pad with zeros to reach target address
+                    int64_t targetAddr = 0;
+                    std::string valStr = dir->value;
+                    
+                    if (valStr.size() >= 2 && (valStr.substr(0, 2) == "0x" || valStr.substr(0, 2) == "0X")) {
+                        targetAddr = std::stoll(valStr.substr(2), nullptr, 16);
+                    } else if (valStr.size() >= 2 && (valStr.substr(0, 2) == "0b" || valStr.substr(0, 2) == "0B")) {
+                        targetAddr = std::stoll(valStr.substr(2), nullptr, 2);
+                    } else {
+                        targetAddr = std::stoll(valStr, nullptr, 0);
+                    }
+                    
+                    if (targetAddr < currentAddress) {
+                        throw std::runtime_error("Error at line " + std::to_string(dir->line) + 
+                                                ": .org address 0x" + std::to_string(targetAddr) + 
+                                                " is less than current address 0x" + std::to_string(currentAddress));
+                    }
+                    
+                    // Pad with zeros to reach target address
+                    while (currentAddress < targetAddr) {
+                        machineCode.push_back(0x0000);
+                        currentAddress++;
+                    }
+                } else {
+                    encodeDirective(dir);
+                }
                 break;
+            }
             case StatementType::INSTRUCTION:
                 encodeInstruction(static_cast<Instruction*>(stmt.get()));
                 break;
             default:
-                throw std::runtime_error("Unknown statement type at line " + std::to_string(stmt->line));
+                // Labels don't generate code
+                break;
         }
     }
     return machineCode;

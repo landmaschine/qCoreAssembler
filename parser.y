@@ -114,7 +114,15 @@ label:
 directive:
     DIRECTIVE NUMBER
     {
-        // .word directive
+        // .word or .org directive with numeric value
+        auto dir = make_directive(std::string($1), "", std::string($2), line_num, col_num);
+        $$ = dir.release();
+        free($1);
+        free($2);
+    }
+    | DIRECTIVE LABEL_REF
+    {
+        // .word with label reference (e.g., .word MY_LABEL)
         auto dir = make_directive(std::string($1), "", std::string($2), line_num, col_num);
         $$ = dir.release();
         free($1);
@@ -122,7 +130,7 @@ directive:
     }
     | DIRECTIVE LABEL_REF NUMBER
     {
-        // .define directive
+        // .define directive (e.g., .define MY_CONST 42)
         auto dir = make_directive(std::string($1), std::string($2), std::string($3), line_num, col_num);
         $$ = dir.release();
         free($1);
@@ -132,7 +140,14 @@ directive:
     ;
 
 instruction:
-    INSTRUCTION LABEL_REF
+    INSTRUCTION
+    {
+        // No-operand instructions (halt)
+        auto instr = make_instruction(std::string($1), "", "", false, false, false, line_num, col_num);
+        $$ = instr.release();
+        free($1);
+    }
+    | INSTRUCTION LABEL_REF
     {
         // Branch instructions (b, beq, bne, bcc, bcs, bpl, bmi, bl)
         auto instr = make_instruction(std::string($1), std::string($2), "", false, false, false, line_num, col_num);

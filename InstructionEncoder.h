@@ -35,6 +35,7 @@ private:
     void encodeRegMem(const InstructionDef* def, uint8_t rX, uint8_t rY);
     void encodeShift(const InstructionDef* def, Instruction* instr, uint8_t rX);
     void encodeLabelLoad(Instruction* instr, uint8_t rX);
+    void encodeNoOperand(const InstructionDef* def);
     
     // Main encoding dispatcher
     void encodeInstruction(Instruction* instr);
@@ -42,6 +43,9 @@ private:
 
 public:
     Encoder(SymbolTable& st) : symbolTable(st), currentAddress(0) {}
+
+    void setCurrentAddress(int addr) { currentAddress = addr; }
+    int getCurrentAddress() const { return currentAddress; }
 
     std::vector<uint16_t> encode(const std::vector<std::unique_ptr<Statement>>& ast);
 };

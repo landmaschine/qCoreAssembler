@@ -22,6 +22,7 @@ enum class InstrFormat {
     REG_MEM,          // ld/st rX, [rY]      (memory access with register indirect)
     SHIFT,            // lsl/lsr/asr/ror rX, rY | #imm (shift operations)
     LABEL_LOAD,       // mv rX, =label       (load label address - generates MVT+ADD)
+    NO_OPERAND,       // halt                (no operands)
 };
 
 // Instruction definition entry
@@ -88,6 +89,9 @@ inline const std::vector<InstructionDef>& getInstructionTable() {
         {"bpl",   InstrFormat::BRANCH,         0x2000, 0x2000, 9, 5, 1, false, "Branch if positive (N=0)"},
         {"bmi",   InstrFormat::BRANCH,         0x2000, 0x2000, 9, 6, 1, false, "Branch if negative (N=1)"},
         {"bl",    InstrFormat::BRANCH,         0x2000, 0x2000, 9, 7, 1, false, "Branch and link (call)"},
+
+        // Control Instructions
+        {"halt", InstrFormat::NO_OPERAND,      0xE1F0, 0xE1F0, 0, 0, 1, false, "Halt processor execution"},
     };
     return INSTRUCTIONS;
 }
@@ -172,6 +176,7 @@ inline const std::vector<DirectiveDef>& getDirectiveTable() {
     static const std::vector<DirectiveDef> DIRECTIVES = {
         {".word",   "Emit a 16-bit word value"},
         {".define", "Define a symbolic constant"},
+        {".org", "Set the current assembly address (origin)"},
     };
     return DIRECTIVES;
 }
@@ -298,6 +303,18 @@ inline std::string generateInstructionSetDoc() {
     for (const auto& dir : getDirectiveTable()) {
         doc << "| `" << dir.name << "` | " << dir.description << " |\n";
     }
+
+    doc << "\n## Memory Map (DE010-Lite)\n\n";
+    doc << "| Address | Description |\n";
+    doc << "|---------|-------------|\n";
+    doc << "| `0x0000 - 0x03FF` | Programm/Data Memory (1024 words) |\n";
+    doc << "| `0x0064` | ISR Entry Point (Timer Interrupt) |\n";
+    doc << "| `0x1000` | LED Output Register |\n";
+    doc << "| `0x2000 - 0x2005` | 7-Segment Display (6 digits) |\n";
+    doc << "| `0x3000` | Switch Input Register (read-only) |\n";
+    doc << "| `0x4000` | Timer Data Low Word |\n";
+    doc << "| `0x4001` | Timer Data High Word |\n";
+    doc << "| `0x5000` | Timer Control (1=INIT, 2=START, 3=ACK) |\n";
     
     return doc.str();
 }
