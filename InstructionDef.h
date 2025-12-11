@@ -43,15 +43,12 @@ struct InstructionDef {
           extraData(extra), baseSize(size), canExpand(expand), description(desc) {}
 };
 
-// ============================================================================
 // INSTRUCTION TABLE - Add new instructions 
-// ============================================================================
 // Format: {mnemonic, format, opcodeReg, opcodeImm, immBits, extraData, size, canExpand, description}
 //
 // To add a new instruction:
 // 1. Determine the format (REG_REG, REG_IMM, etc.)
 // 2. Add a single line to this table
-// ============================================================================
 
 inline const std::vector<InstructionDef>& getInstructionTable() {
     static const std::vector<InstructionDef> INSTRUCTIONS = {
@@ -63,7 +60,9 @@ inline const std::vector<InstructionDef>& getInstructionTable() {
         {"add",   InstrFormat::REG_IMM_OR_REG, 0x4000, 0x5000, 9, 0, 1, true,  "Add register or immediate"},
         {"sub",   InstrFormat::REG_IMM_OR_REG, 0x6000, 0x7000, 9, 0, 1, true,  "Subtract register or immediate"},
         {"and",   InstrFormat::REG_IMM_OR_REG, 0xC000, 0xD000, 9, 0, 1, true,  "Bitwise AND register or immediate"},
-        {"xor",   InstrFormat::REG_REG,        0xE110, 0xE110, 0, 0, 1, false, "Bitwise XOR registers"},
+        
+        // Currently not implemented in FPGA qCore, uncomment when adding support
+        //{"xor",   InstrFormat::REG_REG,        0xE110, 0xE110, 0, 0, 1, false, "Bitwise XOR registers"},
         
         // Compare Instruction
         {"cmp",   InstrFormat::REG_IMM_OR_REG, 0xE000, 0xF000, 9, 0, 1, false, "Compare register with register or immediate"},
