@@ -1,8 +1,9 @@
 %{
 // ============================================================================
 // Author: LeonW
-// Date: February 3, 2025
+// Date: December 10, 2025
 // Description: Bison parser specification for the qCore assembler
+//              Clean operand handling with proper type tracking
 // ============================================================================
 
 #include "common.h"
@@ -19,15 +20,49 @@ extern int col_num;
 
 ProgramAST* g_ast = nullptr;
 
+// Operand type enum for clean tracking
+enum class OperandType {
+    NONE,
+    REG,        // r0-r7, sp, lr, pc
+    IMM,        // #value
+    LABEL_IMM,  // =value or =LABEL
+    IDENT,      // label reference or symbol
+    NUMBER      // bare number
+};
+
+struct Operand {
+    std::string value;
+    OperandType type;
+    
+    Operand() : type(OperandType::NONE) {}
+    Operand(const std::string& v, OperandType t) : value(v), type(t) {}
+};
+
 static std::unique_ptr<Instruction> make_instruction(
-    const std::string& opcode, const std::string& op1, const std::string& op2,
-    bool hasComma, bool isLabelImm, bool isImm, int line, int col) {
-    return std::make_unique<Instruction>(opcode, op1, op2, hasComma, isLabelImm, isImm, line, col);
+    const std::string& opcode, 
+    const Operand& op1, 
+    const Operand& op2,
+    int line, int col) 
+{
+    bool isLabelImm = (op2.type == OperandType::LABEL_IMM);
+    bool isImm = (op2.type == OperandType::IMM || 
+                  op2.type == OperandType::LABEL_IMM || 
+                  op2.type == OperandType::NUMBER);
+    bool hasComma = (op2.type != OperandType::NONE);
+    
+    return std::make_unique<Instruction>(
+        opcode, op1.value, op2.value, 
+        hasComma, isLabelImm, isImm, 
+        line, col
+    );
 }
 
 static std::unique_ptr<Directive> make_directive(
-    const std::string& name, const std::string& label, const std::string& value,
-    int line, int col) {
+    const std::string& name, 
+    const std::string& label, 
+    const std::string& value,
+    int line, int col) 
+{
     return std::make_unique<Directive>(name, label, value, line, col);
 }
 
@@ -44,16 +79,20 @@ static std::unique_ptr<Label> make_label(const std::string& name, int line, int 
     char*   str;
     void*   node;
     void*   list;
+    void*   operand;
 }
 
-%token INSTRUCTION REGISTER NUMBER NUMBER_IMMEDIATE LABEL LABEL_REF LABEL_IMMEDIATE
-%token COMMA BRACKET_OPEN BRACKET_CLOSE DIRECTIVE COMMENT
+%token <str> INSTRUCTION REGISTER NUMBER IMMEDIATE LABEL IDENTIFIER LABEL_IMMEDIATE
+%token <str> DIRECTIVE STRING
+%token COMMA LBRACKET RBRACKET
 %token INVALID END 0
 
-%type <str> INSTRUCTION REGISTER NUMBER NUMBER_IMMEDIATE LABEL LABEL_REF LABEL_IMMEDIATE DIRECTIVE
-%type <str> operand
 %type <node> statement instruction directive label
 %type <list> program statements
+%type <operand> operand
+
+%destructor { free($$); } <str>
+%destructor { delete static_cast<Operand*>($$); } <operand>
 
 %start program
 
@@ -64,7 +103,7 @@ program:
     {
         g_ast = new ProgramAST();
         if ($1 != nullptr) {
-            auto* stmts = (std::vector<std::unique_ptr<Statement>>*)$1;
+            auto* stmts = static_cast<std::vector<std::unique_ptr<Statement>>*>($1);
             for (auto& stmt : *stmts) {
                 g_ast->push_back(std::move(stmt));
             }
@@ -80,27 +119,18 @@ statements:
     }
     | statements statement
     {
-        auto* stmts = (std::vector<std::unique_ptr<Statement>>*)$1;
+        auto* stmts = static_cast<std::vector<std::unique_ptr<Statement>>*>($1);
         if ($2 != nullptr) {
-            stmts->push_back(std::unique_ptr<Statement>((Statement*)$2));
+            stmts->push_back(std::unique_ptr<Statement>(static_cast<Statement*>($2)));
         }
         $$ = stmts;
     }
     ;
 
 statement:
-    instruction
-    {
-        $$ = $1;
-    }
-    | directive
-    {
-        $$ = $1;
-    }
-    | label
-    {
-        $$ = $1;
-    }
+    instruction { $$ = $1; }
+    | directive { $$ = $1; }
+    | label     { $$ = $1; }
     ;
 
 label:
@@ -111,109 +141,119 @@ label:
     }
     ;
 
+//DIRECTIVES
+
 directive:
+    /* .word VALUE or .org VALUE or .space COUNT */
     DIRECTIVE NUMBER
     {
-        // .word or .org directive with numeric value
-        auto dir = make_directive(std::string($1), "", std::string($2), line_num, col_num);
-        $$ = dir.release();
+        $$ = make_directive($1, "", $2, line_num, col_num).release();
         free($1);
         free($2);
     }
-    | DIRECTIVE LABEL_REF
+    /* .word LABEL_REF */
+    | DIRECTIVE IDENTIFIER
     {
-        // .word with label reference (e.g., .word MY_LABEL)
-        auto dir = make_directive(std::string($1), "", std::string($2), line_num, col_num);
-        $$ = dir.release();
+        $$ = make_directive($1, "", $2, line_num, col_num).release();
         free($1);
         free($2);
     }
-    | DIRECTIVE LABEL_REF NUMBER
+    /* .define NAME VALUE */
+    | DIRECTIVE IDENTIFIER NUMBER
     {
-        // .define directive (e.g., .define MY_CONST 42)
-        auto dir = make_directive(std::string($1), std::string($2), std::string($3), line_num, col_num);
-        $$ = dir.release();
+        $$ = make_directive($1, $2, $3, line_num, col_num).release();
         free($1);
         free($2);
         free($3);
     }
+    /* .ascii "string" or .asciiz "string" */
+    | DIRECTIVE STRING
+    {
+        $$ = make_directive($1, "", $2, line_num, col_num).release();
+        free($1);
+        free($2);
+    }
     ;
 
+//INSTRUCTIONS
+
 instruction:
+    /* No operand: halt */
     INSTRUCTION
     {
-        // No-operand instructions (halt)
-        auto instr = make_instruction(std::string($1), "", "", false, false, false, line_num, col_num);
-        $$ = instr.release();
+        Operand empty;
+        $$ = make_instruction($1, empty, empty, line_num, col_num).release();
         free($1);
     }
-    | INSTRUCTION LABEL_REF
+    /* Single operand - branch target: b LABEL */
+    | INSTRUCTION IDENTIFIER
     {
-        // Branch instructions (b, beq, bne, bcc, bcs, bpl, bmi, bl)
-        auto instr = make_instruction(std::string($1), std::string($2), "", false, false, false, line_num, col_num);
-        $$ = instr.release();
+        Operand op1($2, OperandType::IDENT);
+        Operand empty;
+        $$ = make_instruction($1, op1, empty, line_num, col_num).release();
         free($1);
         free($2);
     }
+    /* Single operand - register: push r0, pop r1 */
     | INSTRUCTION REGISTER
     {
-        // push, pop instructions
-        auto instr = make_instruction(std::string($1), std::string($2), "", false, false, false, line_num, col_num);
-        $$ = instr.release();
+        Operand op1($2, OperandType::REG);
+        Operand empty;
+        $$ = make_instruction($1, op1, empty, line_num, col_num).release();
         free($1);
         free($2);
     }
+    /* Two operands: mv r0, <operand> */
     | INSTRUCTION REGISTER COMMA operand
     {
-        // Two operand instructions with various operand types
-        auto instr = make_instruction(std::string($1), std::string($2), std::string((char*)$4), true, 
-                                     /* isLabelImm determined by context */(std::string((char*)$4).find('=') != std::string::npos ? 1 : 0),
-                                     /* isImmediate */(std::string((char*)$4).find('#') != std::string::npos || 
-                                                       std::string((char*)$4).find('=') != std::string::npos ||
-                                                       std::isdigit(((char*)$4)[0]) ? 1 : 0),
-                                     line_num, col_num);
-        $$ = instr.release();
+        Operand op1($2, OperandType::REG);
+        Operand* op2 = static_cast<Operand*>($4);
+        $$ = make_instruction($1, op1, *op2, line_num, col_num).release();
         free($1);
         free($2);
-        free((char*)$4);
+        delete op2;
     }
-    | INSTRUCTION REGISTER COMMA BRACKET_OPEN REGISTER BRACKET_CLOSE
+    /* Memory access: ld r0, [r1] */
+    | INSTRUCTION REGISTER COMMA LBRACKET REGISTER RBRACKET
     {
-        // Load/Store instructions: ld/st r1, [r2]
-        auto instr = make_instruction(std::string($1), std::string($2), std::string($5), true, false, false, line_num, col_num);
-        $$ = instr.release();
+        Operand op1($2, OperandType::REG);
+        Operand op2($5, OperandType::REG);
+        $$ = make_instruction($1, op1, op2, line_num, col_num).release();
         free($1);
         free($2);
         free($5);
     }
     ;
 
+//OPERANDS - Clean type tracking
+
 operand:
     REGISTER
     {
-        $$ = strdup($1);
+        $$ = new Operand($1, OperandType::REG);
+        free($1);
     }
-    | NUMBER
+    | IMMEDIATE
     {
-        $$ = strdup($1);
-    }
-    | NUMBER_IMMEDIATE
-    {
-        char* buf = (char*)malloc(strlen($1) + 2);
-        strcpy(buf, "#");
-        strcat(buf, $1);
-        $$ = buf;
+        // Store with # prefix for encoder
+        $$ = new Operand(std::string("#") + $1, OperandType::IMM);
+        free($1);
     }
     | LABEL_IMMEDIATE
     {
-        char* buf = (char*)malloc(strlen($1) + 2);
-        strcpy(buf, "=");
-        strcat(buf, $1);
-        $$ = buf;
+        // Store with = prefix for encoder
+        $$ = new Operand(std::string("=") + $1, OperandType::LABEL_IMM);
+        free($1);
     }
-    | LABEL_REF
+    | IDENTIFIER
     {
-        $$ = strdup($1);
+        $$ = new Operand($1, OperandType::IDENT);
+        free($1);
+    }
+    | NUMBER
+    {
+        $$ = new Operand($1, OperandType::NUMBER);
+        free($1);
     }
     ;
 

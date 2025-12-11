@@ -2,12 +2,10 @@
 // Author: LeonW
 // Date: December 10, 2025
 // Description: Table-driven instruction encoder implementation
-//              Uses InstructionDef.h for instruction definitions
 // ============================================================================
 
 #include "InstructionEncoder.h"
 #include "InstructionDef.h"
-#include <stdatomic.h>
 
 uint8_t Encoder::parseRegister(const std::string& reg) {
     auto& regMap = getRegisterMap();
@@ -41,7 +39,9 @@ int64_t Encoder::parseImmediateOrSymbol(const std::string& value, const std::str
         
         std::string numStr = value;
         // Strip # or = prefix if present
-        if (!numStr.empty() && (numStr[0] == '#' || numStr[0] == '=')) numStr = numStr.substr(1);
+        if (!numStr.empty() && (numStr[0] == '#' || numStr[0] == '=')) {
+            numStr = numStr.substr(1);
+        }
         
         // Check if it's a symbol after stripping prefix
         if (symbolTable.hasDefine(numStr)) {
@@ -66,6 +66,7 @@ int64_t Encoder::parseImmediateOrSymbol(const std::string& value, const std::str
 }
 
 // Generic encoding functions - one per instruction format
+
 void Encoder::encodeRegReg(const InstructionDef* def, uint8_t rX, uint8_t rY) {
     machineCode.push_back(def->opcodeReg | (rX << 9) | rY);
     currentAddress++;
@@ -90,10 +91,8 @@ void Encoder::encodeRegImmOrReg(const InstructionDef* def, Instruction* instr, u
         
         // For mv instruction with =label, generate MVT + ADD sequence
         if (def->mnemonic == "mv") {
-            // MVT rX, high byte
             auto mvtDef = getInstructionDef("mvt");
             machineCode.push_back(mvtDef->opcodeImm | (rX << 9) | ((value >> 8) & 0xFF));
-            // ADD rX, low byte
             auto addDef = getInstructionDef("add");
             machineCode.push_back(addDef->opcodeImm | (rX << 9) | (value & 0xFF));
             currentAddress += 2;
@@ -140,13 +139,11 @@ void Encoder::encodeBranch(const InstructionDef* def, Instruction* instr) {
         throw std::runtime_error("Branch target too far (offset " + std::to_string(offset) + " words)");
     }
     
-    // Condition code is stored in extraData field
     machineCode.push_back(def->opcodeReg | (def->extraData << 9) | encodeImmediate(offset, def->immBits, "branch offset"));
     currentAddress++;
 }
 
 void Encoder::encodeRegOnly(const InstructionDef* def, uint8_t rX) {
-    // extraData contains the second register (e.g., SP for push/pop)
     machineCode.push_back(def->opcodeReg | (rX << 9) | def->extraData);
     currentAddress++;
 }
@@ -157,7 +154,6 @@ void Encoder::encodeRegMem(const InstructionDef* def, uint8_t rX, uint8_t rY) {
 }
 
 void Encoder::encodeShift(const InstructionDef* def, Instruction* instr, uint8_t rX) {
-    // Shift type from extraData: 0=LSL, 1=LSR, 2=ASR, 3=ROR
     uint8_t shiftType = def->extraData;
     uint16_t encoded = def->opcodeReg | (rX << 9) | (0b10 << 7) | (shiftType << 5);
     
@@ -199,7 +195,8 @@ void Encoder::encodeNoOperand(const InstructionDef* def) {
     currentAddress++;
 }
 
-// Main encoding dispatcher - routes to appropriate format handler
+// Main encoding dispatcher
+
 void Encoder::encodeInstruction(Instruction* instr) {
     try {
         const InstructionDef* def = getInstructionDef(instr->opcode);
@@ -207,7 +204,7 @@ void Encoder::encodeInstruction(Instruction* instr) {
             throw std::runtime_error("Unknown instruction: " + instr->opcode);
         }
 
-        if(def->format == InstrFormat::NO_OPERAND) {
+        if (def->format == InstrFormat::NO_OPERAND) {
             encodeNoOperand(def);
             return;
         }
@@ -271,6 +268,8 @@ void Encoder::encodeInstruction(Instruction* instr) {
     }
 }
 
+// Directive encoding
+
 void Encoder::encodeDirective(Directive* dir) {
     try {
         if (dir->name == ".word") {
@@ -280,12 +279,37 @@ void Encoder::encodeDirective(Directive* dir) {
             }
             machineCode.push_back(static_cast<uint16_t>(value & 0xFFFF));
             currentAddress++;
+        } 
+        else if (dir->name == ".space") {
+            int64_t count = parseImmediateOrSymbol(dir->value, ".space directive");
+            if (count < 0) {
+                throw std::runtime_error(".space count cannot be negative");
+            }
+            for (int64_t i = 0; i < count; i++) {
+                machineCode.push_back(0x0000);
+                currentAddress++;
+            }
+        }
+        else if (dir->name == ".ascii" || dir->name == ".asciiz") {
+            // Emit each character as a 16-bit word
+            const std::string& str = dir->value;
+            for (char c : str) {
+                machineCode.push_back(static_cast<uint16_t>(static_cast<uint8_t>(c)));
+                currentAddress++;
+            }
+            // Add null terminator for .asciiz
+            if (dir->name == ".asciiz") {
+                machineCode.push_back(0x0000);
+                currentAddress++;
+            }
         }
     } catch (const std::exception& e) {
         throw std::runtime_error("Error encoding directive at line " + 
                                 std::to_string(dir->line) + ": " + e.what());
     }
 }
+
+// Main encode function
 
 std::vector<uint16_t> Encoder::encode(const std::vector<std::unique_ptr<Statement>>& ast) {
     machineCode.clear();
@@ -314,12 +338,12 @@ std::vector<uint16_t> Encoder::encode(const std::vector<std::unique_ptr<Statemen
                                                 " is less than current address 0x" + std::to_string(currentAddress));
                     }
                     
-                    // Pad with zeros to reach target address
                     while (currentAddress < targetAddr) {
                         machineCode.push_back(0x0000);
                         currentAddress++;
                     }
-                } else {
+                } else if (dir->name != ".define") {
+                    // .define is handled in first pass, skip here
                     encodeDirective(dir);
                 }
                 break;
@@ -328,7 +352,6 @@ std::vector<uint16_t> Encoder::encode(const std::vector<std::unique_ptr<Statemen
                 encodeInstruction(static_cast<Instruction*>(stmt.get()));
                 break;
             default:
-                // Labels don't generate code
                 break;
         }
     }
